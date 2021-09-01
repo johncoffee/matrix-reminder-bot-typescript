@@ -20,8 +20,9 @@ let updateInt = parseFloat(process.env.UPDATE_INTERVAL as string) * 1000 || 2000
 let handle = setInterval(updateTick, updateInt)
 
 type reminderInfo = {
-  message: string,
-  roomId: string,
+  message: string
+  roomId: string
+  owner: string
 }
 const reminders = new Map<Date, reminderInfo>()
 
@@ -39,19 +40,15 @@ client.on('room.message', async function handleCommand (roomId: string, event) {
     return
 
   if (!dateInput) {
-    client.sendMessage(roomId, {
-      'msgtype': 'm.text',
-      'body': `usage: \`!remind <date> <message>\``,
-    }).catch(console.error)
+    client.sendText(roomId,`usage: \`!remind <date> <message>\``)
+      .catch(console.error)
     return
   }
 
   const interval = moment.duration(dateInput, unit)
   if (!interval.isValid()) {
-    client.sendMessage(roomId, {
-      'msgtype': 'm.notice',
-      'body': `Sorry, bad date interval`,
-    }).catch(console.error)
+    client.replyNotice(roomId, event, `sorry, i could not understand the given time duration. Try "5 seconds", "30 minutes" or "1 day", etc.`)
+      .catch(console.error)
     return
   }
   const parsed = moment().add( interval )
@@ -59,45 +56,36 @@ client.on('room.message', async function handleCommand (roomId: string, event) {
   const msgSent = moment(event.origin_server_ts)
 
   if (parsed.isBefore(msgSent)) {
-    client.sendMessage(roomId, {
-      'msgtype': 'm.notice',
-      'body': `Sorry, bad input: the given deadline was in the past (${parsed.format()})`,
-    })
+    client.replyNotice(roomId, event, `Sorry, bad input: the given deadline was in the past (${parsed.format()})`)
       .catch(console.error)
     return
   }
 
   if (!messageToEcho) {
-    client.sendMessage(roomId, {
-      'msgtype': 'm.notice',
-      'body': `Sorry, bad input: provide some after the date message `,
-    }).catch(console.error)
+    client.replyNotice(roomId, event,`Sorry, bad input: provide some after the date message `)
+      .catch(console.error)
 
     return
   }
 
+  console.log(event)
   reminders.set(parsed.toDate(), {
     message: messageToEcho,
     roomId,
+    owner: event.sender,
   })
-  client.sendMessage(roomId, {
-    'msgtype': 'm.notice',
-    'body': `Reminder set for ${parsed}`,
-  })
+  client.replyNotice(roomId, event,`Reminder set for ${parsed}`)
     .catch(console.error)
 
 })
 
 function updateTick () {
   const now = new Date()
-  for (const [k,{roomId, message}] of reminders.entries()) {
+  for (const [k,{roomId, message, owner}] of reminders.entries()) {
     if (k > now) continue
 
     reminders.delete(k)
-    client.sendMessage(roomId, {
-      'msgtype': 'm.text',
-      'body': `${message}`,
-    })
+    client.sendHtmlText(roomId, `${owner}: ${message} <br><small>(reminder set up via bot)</small>`)
       .catch(console.error)
 
     return
